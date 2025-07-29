@@ -1,0 +1,52 @@
+#
+# Dockerfile.ros
+#
+# Build a ROS 2 image with MoveIt and the ABB CRB 15000 support
+# package.  This image uses the official ROS 2 base image as a
+# foundation, installs additional dependencies (MoveIt, xacro, git) and
+# clones the abb_ros2 repository.  It then builds the workspace using
+# colcon.  The launch file `view_crb15000_5_95.launch.py` starts a
+# robot_state_publisher, joint state slider GUI and RViz【955574263095724†L30-L67】, which is
+# appropriate for both simulation and for visualising the robot in
+# real time.
+
+FROM osrf/ros:jazzy-desktop
+
+# Install build tools and MoveIt packages
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      build-essential \
+      python3-colcon-common-extensions \
+      git \
+      ros-jazzy-moveit \
+      ros-jazzy-moveit-common \
+      ros-jazzy-joint-state-publisher-gui \
+      ros-jazzy-xacro
+
+# Create a workspace
+WORKDIR /workspace
+RUN mkdir -p src
+
+# Clone the ABB ROS 2 repository.  Use the testing branch so that the
+# CRB 15000 MoveIt configuration and URDF are available.
+RUN git clone --branch testing --depth 1 https://github.com/bjoernellens1/abb_ros2.git src/abb_ros2
+
+# abb_ros2 dependencies
+RUN rosdep update && \
+    cd src && \
+    vcs import < abb_ros2/abb.repos && \
+    rosdep install -r --from-paths . --ignore-src --rosdistro $ROS_DISTRO -y
+
+# Source the ROS environment and build the workspace
+RUN . /opt/ros/jazzy/setup.sh && \
+    colcon build --symlink-install && \
+    . install/setup.sh && \
+    rosdep update && \
+    rm -rf /var/lib/apt/lists/*
+
+
+# Source the workspace in the entrypoint
+SHELL ["/bin/bash", "-c"]
+ENTRYPOINT . /opt/ros/jazzy/setup.sh && \
+           . /workspace/install/setup.sh && \
+           ros2 launch abb_crb15000_support view_crb15000_5_95.launch.py

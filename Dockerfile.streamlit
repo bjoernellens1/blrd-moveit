@@ -1,0 +1,41 @@
+#
+# Dockerfile.streamlit
+#
+# Build an image for the Streamlit UI that visualises the ABB cobot.
+#
+# This revised version uses the `abb_ros` image (built from
+# Dockerfile.ros) as its base.  Because the ROS and MoveIt
+# dependencies (including xacro and the ABB packages) are already
+# installed in that image, we avoid duplicating apt installations and
+# ensure that the Streamlit container has access to the built
+# workspace.  The `abb_ros` image must be tagged via the `image:`
+# directive in docker-compose (see docker-compose.yaml) for this to
+# resolve correctly.
+
+FROM abb_ros:latest
+
+# Install system dependencies for pip.  Most ROS dependencies are already
+# installed in the base abb_ros image.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3-pip && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python packages.  We pin networkx>=3.1 to ensure
+# compatibility with Python 3.12 (collections.Mapping moved to
+# collections.abc) and to satisfy urdfpy’s dependencies.
+RUN pip install --no-cache-dir --break-system-packages "networkx>=3.1" streamlit plotly urdfpy
+
+# Copy application code into the image.  The docker-compose file will
+# mount the latest versions at runtime, but including the files here
+# allows the image to run standalone if necessary.
+WORKDIR /app
+COPY ros_interface.py urdf_visualizer.py streamlit_app.py ./
+
+# Expose the default Streamlit port
+EXPOSE 8501
+
+# When the container runs, source the ROS setup and execute the
+# Streamlit application.  The ABB_URDF_PATH environment variable
+# should be set via docker-compose to point to the CRB 15000
+# description within the abb_ros2 package.
+ENTRYPOINT ["/bin/bash", "-c", ". /opt/ros/jazzy/setup.sh && . /workspace/install/setup.sh &&streamlit run /app/streamlit_app.py"]
