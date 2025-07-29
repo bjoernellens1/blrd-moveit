@@ -73,6 +73,8 @@ import streamlit as st
 
 from ros_interface import RosInterface
 from urdf_visualizer import load_robot, compute_link_frames
+from threejs_robot_viewer import create_threejs_robot_viewer
+from websocket_server import start_websocket_server
 
 
 ###############################################################################
@@ -311,6 +313,22 @@ def main() -> None:
     st.set_page_config(page_title='ABB CRB Robot Visualisation', layout='wide')
     st.title('ABB CRB Robot Visualisation (ROS 2/MoveIt)')
 
+    # Sidebar controls
+    st.sidebar.header("Visualization Settings")
+    
+    # Visualization mode selector
+    viz_mode = st.sidebar.selectbox(
+        "Visualization Mode",
+        ["Plotly (Static)", "Three.js (Real-time)"],
+        index=1,  # Default to Three.js
+        help="Choose between static Plotly updates or real-time Three.js rendering"
+    )
+    
+    # Debug toggle (only for Plotly mode)
+    enable_debug = False
+    if viz_mode == "Plotly (Static)":
+        enable_debug = st.sidebar.checkbox("Enable debug output", value=False)
+
     # Initialize ROS interface in session state to persist across reruns
     if 'ros' not in st.session_state:
         st.session_state.ros = RosInterface()
@@ -324,27 +342,62 @@ def main() -> None:
             st.error(f'Failed to load URDF: {exc}')
             return
 
+    # Initialize WebSocket server for Three.js mode (after robot is loaded)
+    if (viz_mode == "Three.js (Real-time)" and 
+        'websocket_server' not in st.session_state and 
+        'robot' in st.session_state):
+        print("Starting WebSocket server for Three.js mode...")
+        try:
+            st.session_state.websocket_server = start_websocket_server(st.session_state.ros, st.session_state.robot)
+            print("WebSocket server created, waiting for startup...")
+            # Give the server a moment to start and determine its port
+            time.sleep(0.5)
+            actual_port = st.session_state.websocket_server.get_active_port()
+            print(f"WebSocket server started on port {actual_port}")
+            st.sidebar.success(f"WebSocket server started on port {actual_port}")
+        except Exception as e:
+            print(f"Failed to start WebSocket server: {e}")
+            st.sidebar.error(f"Failed to start WebSocket server: {e}")
+            st.session_state.websocket_server = None
+
     # Get current joint positions
     joint_positions = st.session_state.ros.get_current_joint_positions()
     
-    # Add debug toggle in sidebar
-    enable_debug = st.sidebar.checkbox("Enable debug output", value=False)
-    
     if joint_positions:
-        # Compute link frames and create visualization
+        # Compute link frames for visualization
         link_frames = compute_link_frames(st.session_state.robot, joint_positions)
         
         # Basic information
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Link Frames", len(link_frames))
         with col2:
             st.metric("Joints", len(st.session_state.robot.joints))
         with col3:
             st.metric("Links", len(st.session_state.robot.links))
+        with col4:
+            st.metric("Mode", viz_mode.split(" ")[0])
         
-        # Debug information (only shown when enabled)
-        if enable_debug:
+        # Choose visualization based on selected mode
+        if viz_mode == "Three.js (Real-time)":
+            st.subheader("Real-time 3D Robot Visualization")
+            st.info("🚀 Real-time mode: Robot updates automatically without page refreshes!")
+            
+            # Create Three.js viewer
+            create_threejs_robot_viewer(
+                st.session_state.robot, 
+                link_frames,
+                width=1000,
+                height=600
+            )
+            
+        else:  # Plotly mode
+            st.subheader("Static 3D Robot Visualization")
+            if st.button("🔄 Refresh Visualization"):
+                st.rerun()
+        
+        # Debug information (only shown when enabled for Plotly mode)
+        if viz_mode == "Plotly (Static)" and enable_debug:
             # Check for meshes
             mesh_count = 0
             for link in st.session_state.robot.links:
@@ -371,17 +424,19 @@ def main() -> None:
                                     else:
                                         st.write(f"  - No trimesh objects loaded")
         
-        fig = create_figure(st.session_state.robot, link_frames, enable_debug=enable_debug)
-        
-        if enable_debug:
-            # Debug: Check how many traces were added to the figure
-            total_traces = len(fig.data)
-            mesh_traces = sum(1 for trace in fig.data if hasattr(trace, 'type') and trace.type == 'mesh3d')
-            st.write(f"Total traces in figure: {total_traces}")
-            st.write(f"Mesh traces: {mesh_traces}")
-        
-        # Display the robot visualization
-        st.plotly_chart(fig, use_container_width=True)
+        # Only show Plotly visualization in Plotly mode
+        if viz_mode == "Plotly (Static)":
+            fig = create_figure(st.session_state.robot, link_frames, enable_debug=enable_debug)
+            
+            if enable_debug:
+                # Debug: Check how many traces were added to the figure
+                total_traces = len(fig.data)
+                mesh_traces = sum(1 for trace in fig.data if hasattr(trace, 'type') and trace.type == 'mesh3d')
+                st.write(f"Total traces in figure: {total_traces}")
+                st.write(f"Mesh traces: {mesh_traces}")
+            
+            # Display the robot visualization
+            st.plotly_chart(fig, use_container_width=True)
         
         # Display current joint positions as a table
         st.subheader("Current Joint Positions")
@@ -390,9 +445,10 @@ def main() -> None:
     else:
         st.info('Waiting for joint states...')
     
-    # Auto-refresh the app every POLL_INTERVAL seconds
-    time.sleep(POLL_INTERVAL)
-    st.rerun()
+    # Auto-refresh only for Plotly mode (Three.js updates via WebSocket)
+    if viz_mode == "Plotly (Static)":
+        time.sleep(POLL_INTERVAL)
+        st.rerun()
 
 
 if __name__ == '__main__':

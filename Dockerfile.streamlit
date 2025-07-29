@@ -23,19 +23,20 @@ RUN apt-get update && \
 # Install Python packages.  We pin networkx>=3.1 to ensure
 # compatibility with Python 3.12 (collections.Mapping moved to
 # collections.abc) and to satisfy urdfpy’s dependencies.
-RUN pip install --no-cache-dir --break-system-packages "networkx>=3.1" streamlit plotly urdfpy
+RUN pip install --no-cache-dir --break-system-packages "networkx>=3.1" streamlit plotly urdfpy websockets
 
 # Copy application code into the image.  The docker-compose file will
 # mount the latest versions at runtime, but including the files here
 # allows the image to run standalone if necessary.
 WORKDIR /app
-COPY ros_interface.py urdf_visualizer.py streamlit_app.py ./
+COPY ros_interface.py urdf_visualizer.py streamlit_app.py threejs_robot_viewer.py websocket_server.py ./
 
-# Expose the default Streamlit port
+# Expose the default Streamlit port and WebSocket port
 EXPOSE 8501
+EXPOSE 8765
 
 # When the container runs, source the ROS setup and execute the
 # Streamlit application.  The ABB_URDF_PATH environment variable
 # should be set via docker-compose to point to the CRB 15000
 # description within the abb_ros2 package.
-ENTRYPOINT ["/bin/bash", "-c", ". /opt/ros/jazzy/setup.sh && . /workspace/install/setup.sh &&streamlit run /app/streamlit_app.py"]
+ENTRYPOINT ["/bin/bash", "-c", ". /opt/ros/jazzy/setup.sh && . /workspace/install/setup.sh && streamlit run /app/streamlit_app.py"]

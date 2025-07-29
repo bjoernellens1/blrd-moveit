@@ -44,7 +44,8 @@ services:
       dockerfile: Dockerfile.streamlit
     container_name: abb_streamlit
     ports:
-      - "8501:8501"
+      - "8501:8501"  # Streamlit web interface
+      - "8765:8765"  # WebSocket server for Three.js real-time updates
     environment:
       # The path to the CRB 15000 URDF/Xacro file inside the ROS
       # workspace.  When using the default build, this points to the
@@ -60,6 +61,8 @@ services:
       - ./ros_interface.py:/app/ros_interface.py:ro
       - ./urdf_visualizer.py:/app/urdf_visualizer.py:ro
       - ./streamlit_app.py:/app/streamlit_app.py:ro
+      - ./threejs_robot_viewer.py:/app/threejs_robot_viewer.py:ro
+      - ./websocket_server.py:/app/websocket_server.py:ro
     # networks:
     #   - abb_network
     network_mode: host
