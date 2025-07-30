@@ -1,31 +1,30 @@
 #
 # Dockerfile.streamlit
 #
-# Build an image for the Streamlit UI that visualises the ABB cobot.
+# Multi-stage build for the Streamlit UI that visualises the ABB cobot.
+# This builds on top of the ROS container to reuse the ABB packages.
 #
-# This version uses the official ROS Jazzy desktop image as a base
-# and installs the necessary Python dependencies for Streamlit
-# and robot visualization.
 
-FROM osrf/ros:jazzy-desktop
+# Use the ROS container as base to get pre-built ABB packages
+FROM blrd-moveit-ros_moveit as streamlit_ui
 
-# Install system dependencies for pip and xacro processing
+# Install additional dependencies for Streamlit
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       python3-pip \
-      ros-jazzy-xacro \
       && rm -rf /var/lib/apt/lists/*
 
-# Install Python packages. We pin networkx>=3.1 to ensure
-# compatibility with Python 3.12 (collections.Mapping moved to
-# collections.abc) and to satisfy urdfpy's dependencies.
-RUN pip install --no-cache-dir --break-system-packages "networkx>=3.1" streamlit plotly urdfpy websockets
+# Install Python packages for Streamlit
+RUN pip install --no-cache-dir --break-system-packages \
+    "networkx>=3.1" \
+    streamlit \
+    plotly \
+    urdfpy \
+    websockets
 
-# Copy application code into the image. The docker-compose file will
-# mount the latest versions at runtime, but including the files here
-# allows the image to run standalone if necessary.
+# Copy Streamlit application files
 WORKDIR /workspace
-COPY ros_interface.py urdf_visualizer.py streamlit_app.py threejs_robot_viewer.py websocket_server.py ./
+COPY ros_interface.py urdf_visualizer.py streamlit_app.py threejs_robot_viewer.py websocket_server.py websocket_server_fixed.py main.py ./
 
 # Expose the default Streamlit port and WebSocket port
 EXPOSE 8501
@@ -33,5 +32,5 @@ EXPOSE 8765
 
 # Set up entrypoint to source ROS when commands are run
 SHELL ["/bin/bash", "-c"]
-ENTRYPOINT ["bash", "-c", "source /opt/ros/jazzy/setup.bash && exec \"$@\"", "--"]
+ENTRYPOINT ["bash", "-c", "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && exec \"$@\"", "--"]
 CMD ["streamlit", "run", "/workspace/streamlit_app.py", "--server.port=8501", "--server.address=0.0.0.0"]

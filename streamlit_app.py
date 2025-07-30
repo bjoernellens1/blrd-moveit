@@ -6,8 +6,8 @@ This file defines a Streamlit web applicati# Path to the URDF or Xacro descripti
 # path to point to your local installation of the ABB CRB 1500/15000
 # support package.  In the ABB MoveIt configuration, the URDF is
 # located in the ``abb_crb15000_support/urdf`` directory, e.g.,
-# ``crb15000_5_95.xacro``. Currently using IRB1200 as CRB15000 stand-in.
-URDF_PATH = os.environ.get('ABB_URDF_PATH', '/workspace/src/abb_ros2/robot_specific_config/abb_irb1200_support/urdf/irb1200_5_90.xacro')t visualises the
+# ``crb15000_5_95.xacro``. Using correct CRB15000 URDF path.
+URDF_PATH = os.environ.get('ABB_URDF_PATH', '/workspace/install/abb_crb15000_support/share/abb_crb15000_support/urdf/crb15000_5_95.xacro')t visualises the
 ABB CRB 1500/15000 robot in 3D using real joint state data from
 ROS 2. The app depends on the ``RosInterface`` class to subscribe_app.py
 =================
@@ -91,7 +91,7 @@ from websocket_server import start_websocket_server
 # support package.  In the ABB MoveIt configuration, the URDF is
 # located in the ``abb_crb15000_support/urdf`` directory, e.g.,
 # ``crb15000_5_95.xacro``【955574263095724†L30-L40】.
-URDF_PATH = os.environ.get('ABB_URDF_PATH', '/workspace/src/abb_ros2/robot_specific_config/abb_irb1200_support/urdf/irb1200_5_90.xacro')
+URDF_PATH = os.environ.get('ABB_URDF_PATH', '/workspace/install/abb_crb15000_support/share/abb_crb15000_support/urdf/crb15000_5_95.xacro')
 
 # Polling interval (seconds) for updating the plot.
 POLL_INTERVAL = 0.2
