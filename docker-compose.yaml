@@ -9,7 +9,7 @@ services:
     privileged: true
     network_mode: host
     volumes:
-      - .:/workspace
+      - .:/host_workspace
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - $HOME/.Xauthority:/root/.Xauthority:rw
     environment:
@@ -20,11 +20,9 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=all
     working_dir: /workspace
     command: >
-      bash -c "
-        source /opt/ros/jazzy/setup.bash &&
-        source /workspace/install/setup.bash &&
-        python3 /workspace/ros_interface.py
-      "
+      bash -c "source /opt/ros/jazzy/setup.bash && \
+      source /workspace/install/setup.bash && \
+      python3 /app/ros_interface.py"
     depends_on:
       - streamlit_app
 
@@ -37,15 +35,12 @@ services:
       - "8501:8501"
       - "8765:8765"  # WebSocket port
     volumes:
-      - .:/workspace
+      - .:/host_workspace
     environment:
       - PYTHONPATH=/workspace
     working_dir: /workspace
     command: >
-      bash -c "
-        python3 websocket_server.py &
-        streamlit run streamlit_app.py --server.port=8501 --server.address=0.0.0.0
-      "
+      bash -c "python3 websocket_server.py & streamlit run streamlit_app.py --server.port=8501 --server.address=0.0.0.0"
 
   # Optional: RViz2 service for visualization
   rviz:
@@ -56,7 +51,7 @@ services:
     privileged: true
     network_mode: host
     volumes:
-      - .:/workspace
+      - .:/host_workspace
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - $HOME/.Xauthority:/root/.Xauthority:rw
     environment:
@@ -67,11 +62,7 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=all
     working_dir: /workspace
     command: >
-      bash -c "
-        source /opt/ros/jazzy/setup.bash &&
-        source /workspace/install/setup.bash &&
-        rviz2
-      "
+      bash -c "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && rviz2"
     profiles:
       - rviz
     depends_on:
@@ -86,7 +77,7 @@ services:
     privileged: true
     network_mode: host
     volumes:
-      - .:/workspace
+      - .:/host_workspace
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - $HOME/.Xauthority:/root/.Xauthority:rw
     environment:

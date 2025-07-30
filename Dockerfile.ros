@@ -49,16 +49,16 @@ RUN rosdep update && \
 
 # Source the ROS environment and build the workspace
 RUN . /opt/ros/jazzy/setup.sh && \
-    colcon build --symlink-install && \
+    colcon build && \
     . install/setup.sh && \
     rosdep update && \
     rm -rf /var/lib/apt/lists/*
 
-COPY ros_interface.py /workspace/
+RUN mkdir -p /app
+COPY ros_interface.py /app/
 
 
 # Source the workspace in the entrypoint
 SHELL ["/bin/bash", "-c"]
-ENTRYPOINT . /opt/ros/jazzy/setup.sh && \
-           . /workspace/install/setup.sh && \
-           exec "$@"
+ENTRYPOINT ["/bin/bash", "-c", "source /opt/ros/jazzy/setup.sh && source /workspace/install/setup.sh && exec \"$@\"", "--"]
+CMD ["bash"]
