@@ -1,73 +1,103 @@
 version: '3.8'
 
 services:
-  ros:
-    # Build the ROS 2/MoveIt environment using our custom Dockerfile.
+  ros_moveit:
     build:
       context: .
       dockerfile: Dockerfile.ros
-    # Tag the resulting image so the Streamlit service can reuse it as
-    # its base layer.  The Dockerfile.streamlit specifies
-    # ``FROM abb_ros:latest``, which will resolve to this image.
-    image: abb_ros:latest
-    container_name: abb_ros
-    tty: true
-    # Expose ports for RViz if running with GUI.  No ports are
-    # explicitly exposed here because RViz will run inside the
-    # container.  If you wish to forward X11 or use VNC, additional
-    # configuration is required.
-    volumes:
-      # Mount the abb_ros2 repository so that the container builds
-      # against the local copy.  Replace the host path with the
-      # location of your cloned repository.  If you do not wish to
-      # mount the repo, comment this line out; the Dockerfile clones
-      # the testing branch by default.
-      # - ./abb_ros2:/workspace/src/abb_ros2:ro
-
-       # Allows graphical programs in the container.
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - ${XAUTHORITY:-$HOME/.Xauthority}:/root/.Xauthority
-    # networks:
-    #   - abb_network
+    container_name: abb_moveit_ros
+    privileged: true
     network_mode: host
-    ipc: host
-    devices:
-      - /dev/dri:/dev/dri
+    volumes:
+      - .:/workspace
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - $HOME/.Xauthority:/root/.Xauthority:rw
     environment:
-      QT_X11_NO_MITSHM: 1
-      DISPLAY: $DISPLAY
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - ROS_DOMAIN_ID=0
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    working_dir: /workspace
+    command: >
+      bash -c "
+        source /opt/ros/jazzy/setup.bash &&
+        source /workspace/install/setup.bash &&
+        python3 /workspace/ros_interface.py
+      "
+    depends_on:
+      - streamlit_app
 
-  streamlit:
-    # Build the Streamlit UI image
+  streamlit_app:
     build:
       context: .
       dockerfile: Dockerfile.streamlit
-    container_name: abb_streamlit
+    container_name: abb_streamlit_ui
     ports:
-      - "8501:8501"  # Streamlit web interface
-      - "8765:8765"  # WebSocket server for Three.js real-time updates
-    environment:
-      # The path to the CRB 15000 URDF/Xacro file inside the ROS
-      # workspace.  When using the default build, this points to the
-      # file installed in the ros container.  If you mount a local
-      # workspace, update the path accordingly.
-      ABB_URDF_PATH: /workspace/src/abb_ros2/robot_specific_config/abb_crb15000_support/urdf/crb15000_5_95.xacro
-      ROS_DOMAIN_ID: 0
-    depends_on:
-      - ros
+      - "8501:8501"
+      - "8765:8765"  # WebSocket port
     volumes:
-      # Mount the application code so changes on the host are reflected
-      # inside the container without rebuilding.
-      - ./ros_interface.py:/app/ros_interface.py:ro
-      - ./urdf_visualizer.py:/app/urdf_visualizer.py:ro
-      - ./streamlit_app.py:/app/streamlit_app.py:ro
-      - ./threejs_robot_viewer.py:/app/threejs_robot_viewer.py:ro
-      - ./websocket_server.py:/app/websocket_server.py:ro
-    # networks:
-    #   - abb_network
-    network_mode: host
-    ipc: host
+      - .:/workspace
+    environment:
+      - PYTHONPATH=/workspace
+    working_dir: /workspace
+    command: >
+      bash -c "
+        python3 websocket_server.py &
+        streamlit run streamlit_app.py --server.port=8501 --server.address=0.0.0.0
+      "
 
-networks:
-  abb_network:
-    driver: bridge
+  # Optional: RViz2 service for visualization
+  rviz:
+    build:
+      context: .
+      dockerfile: Dockerfile.ros
+    container_name: abb_rviz
+    privileged: true
+    network_mode: host
+    volumes:
+      - .:/workspace
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - $HOME/.Xauthority:/root/.Xauthority:rw
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - ROS_DOMAIN_ID=0
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    working_dir: /workspace
+    command: >
+      bash -c "
+        source /opt/ros/jazzy/setup.bash &&
+        source /workspace/install/setup.bash &&
+        rviz2
+      "
+    profiles:
+      - rviz
+    depends_on:
+      - ros_moveit
+
+  # Development service for interactive shell access
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.ros
+    container_name: abb_dev
+    privileged: true
+    network_mode: host
+    volumes:
+      - .:/workspace
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - $HOME/.Xauthority:/root/.Xauthority:rw
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - ROS_DOMAIN_ID=0
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    working_dir: /workspace
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+    profiles:
+      - dev

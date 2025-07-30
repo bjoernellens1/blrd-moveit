@@ -2,7 +2,12 @@
 streamlit_app.py
 =================
 
-This file defines a Streamlit web application that visualises the
+This file defines a Streamlit web applicati# Path to the URDF or Xacro description of the ABB robot.  Adjust this
+# path to point to your local installation of the ABB CRB 1500/15000
+# support package.  In the ABB MoveIt configuration, the URDF is
+# located in the ``abb_crb15000_support/urdf`` directory, e.g.,
+# ``crb15000_5_95.xacro``. Currently using IRB1200 as CRB15000 stand-in.
+URDF_PATH = os.environ.get('ABB_URDF_PATH', '/workspace/src/abb_ros2/robot_specific_config/abb_irb1200_support/urdf/irb1200_5_90.xacro')t visualises the
 ABB CRB 1500/15000 robot in 3D using real joint state data from
 ROS 2. The app depends on the ``RosInterface`` class to subscribe_app.py
 =================
@@ -86,7 +91,7 @@ from websocket_server import start_websocket_server
 # support package.  In the ABB MoveIt configuration, the URDF is
 # located in the ``abb_crb15000_support/urdf`` directory, e.g.,
 # ``crb15000_5_95.xacro``【955574263095724†L30-L40】.
-URDF_PATH = os.environ.get('ABB_URDF_PATH', '/workspace/src/abb_ros2/robot_specific_config/abb_crb15000_support/urdf/crb15000_5_95.xacro')
+URDF_PATH = os.environ.get('ABB_URDF_PATH', '/workspace/src/abb_ros2/robot_specific_config/abb_irb1200_support/urdf/irb1200_5_90.xacro')
 
 # Polling interval (seconds) for updating the plot.
 POLL_INTERVAL = 0.2
@@ -328,7 +333,7 @@ def main() -> None:
     enable_debug = False
     if viz_mode == "Plotly (Static)":
         enable_debug = st.sidebar.checkbox("Enable debug output", value=False)
-
+    
     # Initialize ROS interface in session state to persist across reruns
     if 'ros' not in st.session_state:
         st.session_state.ros = RosInterface()
@@ -362,6 +367,79 @@ def main() -> None:
 
     # Get current joint positions
     joint_positions = st.session_state.ros.get_current_joint_positions()
+    
+    # MoveIt2 Planning Controls (needs joint_positions to be defined)
+    st.sidebar.header("MoveIt2 Planning")
+    
+    # Joint target controls
+    target_positions = {}
+    if joint_positions:
+        st.sidebar.subheader("Joint Targets")
+        # Add joint sliders for planning targets
+        for joint_name, current_pos in joint_positions.items():
+            target_positions[joint_name] = st.sidebar.slider(
+                f"{joint_name} target",
+                min_value=-3.14159,
+                max_value=3.14159,
+                value=float(current_pos),
+                step=0.01,
+                format="%.2f",
+                help=f"Target position for {joint_name} (radians)"
+            )
+        
+        # Planning and execution buttons
+        col1, col2 = st.sidebar.columns(2)
+        
+        with col1:
+            if st.button("Plan Motion", type="primary", help="Plan trajectory to target joint positions"):
+                with st.spinner("Planning trajectory..."):
+                    planned_path = st.session_state.ros.plan_to_joint_positions(target_positions)
+                    if planned_path:
+                        st.session_state.planned_trajectory = planned_path
+                        st.sidebar.success("Planning successful!")
+                    else:
+                        st.sidebar.error("Planning failed!")
+        
+        with col2:
+            if st.button("Execute", type="secondary", help="Execute the planned trajectory"):
+                if hasattr(st.session_state, 'planned_trajectory'):
+                    with st.spinner("Executing trajectory..."):
+                        # For execution, we need trajectory points, not just final position
+                        # This is a simplified version - in practice, you'd want full trajectory
+                        trajectory_points = [list(st.session_state.planned_trajectory)]
+                        success = st.session_state.ros.execute_trajectory(trajectory_points)
+                        if success:
+                            st.sidebar.success("Execution successful!")
+                        else:
+                            st.sidebar.error("Execution failed!")
+                else:
+                    st.sidebar.warning("No trajectory planned!")
+        
+        # Display planned trajectory info
+        if hasattr(st.session_state, 'planned_trajectory'):
+            st.sidebar.subheader("Planned Trajectory")
+            st.sidebar.text(f"Target positions: {len(st.session_state.planned_trajectory)} joints")
+            
+            # Show planned vs current positions
+            for i, (joint_name, current_pos) in enumerate(joint_positions.items()):
+                if i < len(st.session_state.planned_trajectory):
+                    planned_pos = st.session_state.planned_trajectory[i]
+                    diff = abs(planned_pos - current_pos)
+                    st.sidebar.text(f"{joint_name}: {planned_pos:.3f} (Δ{diff:.3f})")
+        
+        # Current joint positions display
+        st.sidebar.subheader("Current Joint Positions")
+        for joint_name, position in joint_positions.items():
+            st.sidebar.text(f"{joint_name}: {position:.3f} rad")
+    
+    # Robot status info
+    st.sidebar.header("Robot Status")
+    st.sidebar.text(f"Connected: {'Yes' if joint_positions else 'No'}")
+    if joint_positions:
+        st.sidebar.text(f"Active joints: {len(joint_positions)}")
+    else:
+        st.sidebar.warning("Waiting for robot connection...")
+        st.sidebar.text("Make sure ROS 2 is running and joint_state_publisher is active")
     
     if joint_positions:
         # Compute link frames for visualization

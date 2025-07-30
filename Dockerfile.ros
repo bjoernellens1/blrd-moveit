@@ -20,8 +20,18 @@ RUN apt-get update && \
       git \
       ros-jazzy-moveit \
       ros-jazzy-moveit-common \
+      ros-jazzy-moveit-configs-utils \
+      ros-jazzy-moveit-ros-move-group \
+      ros-jazzy-moveit-ros-planning-interface \
+      ros-jazzy-moveit-kinematics \
+      ros-jazzy-moveit-planners-ompl \
+      ros-jazzy-moveit-simple-controller-manager \
       ros-jazzy-joint-state-publisher-gui \
-      ros-jazzy-xacro
+      ros-jazzy-xacro \
+      ros-jazzy-rviz2 \
+      ros-jazzy-rviz-common \
+      ros-jazzy-rviz-default-plugins \
+      ros-jazzy-moveit-ros-visualization
 
 # Create a workspace
 WORKDIR /workspace
@@ -44,9 +54,11 @@ RUN . /opt/ros/jazzy/setup.sh && \
     rosdep update && \
     rm -rf /var/lib/apt/lists/*
 
+COPY ros_interface.py /workspace/
+
 
 # Source the workspace in the entrypoint
 SHELL ["/bin/bash", "-c"]
 ENTRYPOINT . /opt/ros/jazzy/setup.sh && \
            . /workspace/install/setup.sh && \
-           ros2 launch abb_crb15000_support view_crb15000_5_95.launch.py
+           exec "$@"

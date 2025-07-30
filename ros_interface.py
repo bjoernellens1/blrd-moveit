@@ -160,12 +160,8 @@ class RosInterface:
         with self._lock:
             return dict(self.latest_joint_positions)
 
-    # The following method is a stub demonstrating how you might
-    # integrate MoveIt’s planning capabilities.  Implementations will
-    # vary depending on the chosen Python API (e.g. moveit2_python,
-    # moveit_msgs service calls, or direct integration with moveit_commander).
     def plan_to_joint_positions(self, target_positions: Dict[str, float]) -> Optional[Sequence[float]]:
-        """Plan a trajectory to a desired joint configuration.
+        """Plan a trajectory to a desired joint configuration using MoveIt.
 
         Parameters
         ----------
@@ -176,12 +172,137 @@ class RosInterface:
         -------
         Optional[Sequence[float]]
             A list of joint positions representing the planned path.  If
-            planning fails, return ``None``.  For now, this method is a
-            placeholder and returns ``None``.
+            planning fails, return ``None``.
         """
-        # TODO: Integrate with MoveIt’s Python API here.
-        # For example, using moveit2_python you would create a
-        # MoveGroupInterface for the manipulator, set the target joint
-        # positions, and call plan().  The result’s trajectory could
-        # then be returned or executed via MoveIt’s action server.
-        return None
+        try:
+            from moveit_msgs.msg import MoveItErrorCodes, MotionPlanRequest
+            from moveit_msgs.srv import GetMotionPlan
+            from sensor_msgs.msg import JointState
+            import rclpy
+            
+            if self.node is None:
+                return None
+                
+            # Create a service client for motion planning
+            plan_client = self.node.create_client(GetMotionPlan, '/plan_kinematic_path')
+            
+            if not plan_client.wait_for_service(timeout_sec=2.0):
+                self.node.get_logger().warn("Motion planning service not available")
+                return None
+            
+            # Create motion plan request
+            req = GetMotionPlan.Request()
+            req.motion_plan_request.group_name = "manipulator"  # or appropriate group name
+            req.motion_plan_request.num_planning_attempts = 10
+            req.motion_plan_request.allowed_planning_time = 5.0
+            
+            # Set start state to current joint positions
+            start_state = req.motion_plan_request.start_state
+            start_state.joint_state.name = list(self.latest_joint_positions.keys())
+            start_state.joint_state.position = list(self.latest_joint_positions.values())
+            
+            # Set goal constraints for joint positions
+            from moveit_msgs.msg import Constraints, JointConstraint
+            goal_constraints = Constraints()
+            
+            for joint_name, target_pos in target_positions.items():
+                joint_constraint = JointConstraint()
+                joint_constraint.joint_name = joint_name
+                joint_constraint.position = target_pos
+                joint_constraint.tolerance_above = 0.01
+                joint_constraint.tolerance_below = 0.01
+                joint_constraint.weight = 1.0
+                goal_constraints.joint_constraints.append(joint_constraint)
+            
+            req.motion_plan_request.goal_constraints = [goal_constraints]
+            
+            # Call the planning service
+            future = plan_client.call_async(req)
+            rclpy.spin_until_future_complete(self.node, future, timeout_sec=10.0)
+            
+            if future.done():
+                response = future.result()
+                if response.motion_plan_response.error_code.val == MoveItErrorCodes.SUCCESS:
+                    # Extract trajectory points
+                    trajectory = response.motion_plan_response.trajectory.joint_trajectory
+                    if trajectory.points:
+                        # Return the final joint positions
+                        return trajectory.points[-1].positions
+                    
+            return None
+            
+        except ImportError:
+            if self.node:
+                self.node.get_logger().warn("MoveIt Python packages not available")
+            return None
+        except Exception as e:
+            if self.node:
+                self.node.get_logger().error(f"Motion planning failed: {str(e)}")
+            return None
+
+    def execute_trajectory(self, trajectory_points: Sequence[Sequence[float]]) -> bool:
+        """Execute a planned trajectory using MoveIt.
+
+        Parameters
+        ----------
+        trajectory_points : Sequence[Sequence[float]]
+            A sequence of joint position vectors representing the trajectory.
+
+        Returns
+        -------
+        bool
+            True if execution was successful, False otherwise.
+        """
+        try:
+            from moveit_msgs.action import ExecuteTrajectory
+            from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+            import rclpy
+            from rclpy.action import ActionClient
+            from builtin_interfaces.msg import Duration
+            
+            if self.node is None:
+                return False
+                
+            # Create action client for trajectory execution
+            execute_client = ActionClient(self.node, ExecuteTrajectory, '/execute_trajectory')
+            
+            if not execute_client.wait_for_server(timeout_sec=2.0):
+                self.node.get_logger().warn("Trajectory execution action server not available")
+                return False
+            
+            # Create trajectory message
+            goal_msg = ExecuteTrajectory.Goal()
+            trajectory = JointTrajectory()
+            trajectory.joint_names = list(self.latest_joint_positions.keys())
+            
+            # Add trajectory points
+            for i, positions in enumerate(trajectory_points):
+                point = JointTrajectoryPoint()
+                point.positions = list(positions)
+                point.time_from_start = Duration(sec=i, nanosec=0)  # 1 second per point
+                trajectory.points.append(point)
+            
+            goal_msg.trajectory.joint_trajectory = trajectory
+            
+            # Send goal and wait for result
+            future = execute_client.send_goal_async(goal_msg)
+            rclpy.spin_until_future_complete(self.node, future, timeout_sec=5.0)
+            
+            if future.done():
+                goal_handle = future.result()
+                if goal_handle.accepted:
+                    result_future = goal_handle.get_result_async()
+                    rclpy.spin_until_future_complete(self.node, result_future, timeout_sec=30.0)
+                    if result_future.done():
+                        return result_future.result().result.error_code.val == 1  # SUCCESS
+                        
+            return False
+            
+        except ImportError:
+            if self.node:
+                self.node.get_logger().warn("MoveIt action packages not available")
+            return False
+        except Exception as e:
+            if self.node:
+                self.node.get_logger().error(f"Trajectory execution failed: {str(e)}")
+            return False
