@@ -1,0 +1,3 @@
+[submodule "abb_ros2"]
+	path = abb_ros2
+	url = https://github.com/bjoernellens1/abb_ros2
