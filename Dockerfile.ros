@@ -60,6 +60,7 @@ RUN mkdir -p /app
 COPY ros_interface.py /app/
 COPY launch_moveit_crb15000.py /workspace/
 COPY ros_moveit_service.py /workspace/
+COPY simple_joint_publisher.py /workspace/
 
 
 # Source the workspace in the entrypoint
